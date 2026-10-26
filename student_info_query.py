@@ -67,22 +67,27 @@ def read_csv(file_path):
             enrollments.append(enrollment)
     return enrollments
 
-def get_failed_enrollments(enrollments, threshold=["F", "D"]):
+def get_failed_enrollments(enrollments, threshold=["F", "D"], ignore_courses=[]):
     troubled_students = []
 
     for enrollment in enrollments:
-        if enrollment.current_grade in threshold and enrollment.course_name not in ["Work Program"]:
-            troubled_students.append(enrollment)
+        if enrollment.current_grade in threshold:
+            if enrollment.course_name not in ignore_courses:
+                troubled_students.append(enrollment)
+
 
     return troubled_students
 
-def get_inactive_enrollments(enrollments, threshold=7):
+def get_inactive_enrollments(enrollments, threshold=7, ignore_courses=[]):
     inactive_students = []
     threshold_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=threshold)
 
     for enrollment in enrollments:
         last_activity = enrollment.last_activity_at
         if not last_activity:
+            continue
+
+        if enrollment.course_name in ignore_courses:
             continue
 
         last_activity_date = datetime.datetime.fromisoformat(last_activity.replace("Z", "+00:00"))
@@ -101,14 +106,19 @@ def main():
         INACTIVE_DAYS_THRESHOLD = config.get('DEFAULT', 'inactive_days_threshold')
         ENROLLMENTS_FILE = config.get('DEFAULT', 'enrollments')
         OUTPUT_FILE = config.get('DEFAULT', 'output')
+        IGNORE_COURSES = config.get('DEFAULT', 'ignore_courses')
     except (Error, KeyError) as e:
         print(f"Error reading config file: {e}")
         quit()
 
     students = []
     enrollments = read_csv(ENROLLMENTS_FILE)
-    failed_enrollments = get_failed_enrollments(enrollments, threshold=FAILED_COURSE_THRESHOLD.strip("[]").replace(" ", "").split(","))
-    inactive_enrollments = get_inactive_enrollments(enrollments, threshold=int(INACTIVE_DAYS_THRESHOLD))
+    failed_enrollments = get_failed_enrollments(enrollments, 
+                                                threshold=FAILED_COURSE_THRESHOLD.strip("[]").replace(" ", "").split(","), 
+                                                ignore_courses=IGNORE_COURSES.strip("[]").split(","))
+    inactive_enrollments = get_inactive_enrollments(enrollments,
+                                                    threshold=int(INACTIVE_DAYS_THRESHOLD),
+                                                    ignore_courses=IGNORE_COURSES.strip("[]").split(","))
 
     for enrollment in failed_enrollments:
         if enrollment.student_id not in [student.student_id for student in students]:
